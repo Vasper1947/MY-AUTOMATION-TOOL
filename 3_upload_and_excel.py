@@ -18,14 +18,26 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # ========== HARDCODED GOOGLE DRIVE SETTINGS ==========
-GOOGLE_DRIVE_FOLDER_ID = "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE"  # CHANGE THIS
+GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE")  # Can also be supplied via env
 CREDENTIALS_PATH = "credentials.json"  # Must be in same directory as script
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 # ========== OLLAMA SETTINGS (Vision-capable model) ==========
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llava")  # Vision-capable model
+
+# ========== GEMINI / Google API SETTINGS ==========
+DESCRIPTION_BACKEND = os.getenv("DESCRIPTION_BACKEND", "ollama").lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-pro")
+GEMINI_API_URL = os.getenv("GEMINI_API_URL", "https://gemini.googleapis.com/v1/models")
 
 ECOMMERCE_PROMPT_TEMPLATE = """You are a professional e-commerce product description writer specializing in building materials.
 Based on the product image provided, generate a compelling, accurate product description for {sku}.
@@ -231,6 +243,60 @@ def generate_ollama_description_with_vision(img_path: Path, sku: str, brand: str
         return f"{sku} - Professional-grade product"
 
 
+def generate_gemini_description_with_vision(img_path: Path, sku: str, brand: str, finish: str, dimensions: str):
+    """Generate product description using Gemini API."""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY is not set")
+
+    metadata_parts = []
+    if brand:
+        metadata_parts.append(f"Brand: {brand}")
+    if finish:
+        metadata_parts.append(f"Finish: {finish}")
+    if dimensions:
+        metadata_parts.append(f"Dimensions: {dimensions}")
+
+    metadata_context = "Additional info: " + ", ".join(metadata_parts) if metadata_parts else ""
+    prompt = ECOMMERCE_PROMPT_TEMPLATE.format(
+        sku=sku,
+        metadata_context=metadata_context
+    )
+
+    img_data = image_to_base64(img_path)
+    payload = {
+        "prompt": prompt,
+        "image": {"image_bytes": img_data},
+        "temperature": 0.2,
+        "max_output_tokens": 120
+    }
+    headers = {
+        "Authorization": f"Bearer {GEMINI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(f"{GEMINI_API_URL}/{GEMINI_MODEL}:generate", json=payload, headers=headers, timeout=90)
+        response.raise_for_status()
+        result = response.json()
+        description = ""
+        if isinstance(result, dict):
+            description = result.get("response", "") or result.get("output", {}).get("text", "")
+            if not description:
+                candidates = result.get("candidates", [])
+                if candidates and isinstance(candidates, list):
+                    description = candidates[0].get("content", "") or candidates[0].get("text", "")
+        return description.strip() if description else f"{sku} - Premium product"
+    except Exception as exc:
+        print(f"     ⚠️  Gemini API failed: {exc}")
+        return f"{sku} - Professional-grade product"
+
+
+def generate_product_description(img_path: Path, sku: str, brand: str, finish: str, dimensions: str):
+    if DESCRIPTION_BACKEND == "gemini":
+        return generate_gemini_description_with_vision(img_path, sku, brand, finish, dimensions)
+    return generate_ollama_description_with_vision(img_path, sku, brand, finish, dimensions)
+
+
 def get_txt_path():
     path = choose_txt_file()
     if path:
@@ -286,10 +352,12 @@ def main():
     print("STEP 3: Upload images and create Excel with AI descriptions")
     print("=" * 60)
     
-    print(f"\n🔑 Google Drive Folder ID (hardcoded): {GOOGLE_DRIVE_FOLDER_ID}")
-    if GOOGLE_DRIVE_FOLDER_ID == "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE":
-        print("❌ ERROR: Please update GOOGLE_DRIVE_FOLDER_ID in this script!")
-        return
+    print(f"\n🔑 Google Drive Folder ID: {GOOGLE_DRIVE_FOLDER_ID or '(not set)'}")
+    if not GOOGLE_DRIVE_FOLDER_ID or GOOGLE_DRIVE_FOLDER_ID == "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE":
+        GOOGLE_DRIVE_FOLDER_ID = input("Enter Google Drive folder ID (or press Enter to cancel): ").strip()
+        if not GOOGLE_DRIVE_FOLDER_ID:
+            print("❌ ERROR: Google Drive folder ID is required.")
+            return
 
     txt_path = Path(get_txt_path())
     if not txt_path.exists():
@@ -341,7 +409,7 @@ def main():
             continue
 
         print(f"   [{idx}/{len(df)}] {sku}...", end=" ", flush=True)
-        desc = generate_ollama_description_with_vision(
+        desc = generate_product_description(
             img_path,
             sku,
             row.get("brand", ""),

@@ -3,6 +3,7 @@
 Step 2: Review each image, confirm/correct SKU, then label image with SKU.
 """
 
+import csv
 import os
 import subprocess
 import sys
@@ -88,6 +89,30 @@ def parse_metadata_txt(txt_path):
     return rows
 
 
+def parse_metadata_csv(csv_path):
+    rows = []
+    with open(csv_path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if not row:
+                continue
+            image_path = row.get("labelled_image_path") or row.get("original_image") or row.get("enhanced_image") or row.get("image_path", "")
+            rows.append({
+                "page": row.get("page", ""),
+                "image_index": row.get("image_index", ""),
+                "image_file": Path(image_path).name if image_path else "",
+                "image_path": image_path,
+                "sku": row.get("sku", ""),
+                "brand": row.get("brand", ""),
+                "finish": row.get("finish", ""),
+                "dimensions": row.get("dimensions", ""),
+                "original_desc": row.get("ai_description", row.get("original_desc", "")),
+                "labelled_image_path": row.get("labelled_image_path", ""),
+                "raw_text": row.get("original_desc", "")
+            })
+    return rows
+
+
 def format_metadata_txt(rows, txt_path):
     with open(txt_path, "w", encoding="utf-8") as f:
         for row in rows:
@@ -141,7 +166,11 @@ def main():
     labelled_dir = base_dir / "labelled_images"
     labelled_dir.mkdir(parents=True, exist_ok=True)
 
-    rows = parse_metadata_txt(txt_file)
+    if txt_file.suffix.lower() == ".csv":
+        rows = parse_metadata_csv(txt_file)
+    else:
+        rows = parse_metadata_txt(txt_file)
+
     print(f"\nFound {len(rows)} items to review.")
 
     updated_rows = []

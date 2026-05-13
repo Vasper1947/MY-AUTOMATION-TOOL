@@ -208,7 +208,7 @@ def scale_rect_to_image(rect, page, image_size):
 
 
 def ocr_text_below_image(page, page_image, img_rect, margin=50, height=220):
-    if not OCR_AVAILABLE:
+    if not OCR_AVAILABLE or page_image is None:
         return ""
     x0, y0, x1, y1 = scale_rect_to_image(img_rect, page, page_image.size)
     x0 = max(0, x0 - margin)
@@ -219,6 +219,27 @@ def ocr_text_below_image(page, page_image, img_rect, margin=50, height=220):
         return pytesseract.image_to_string(region, lang="eng")
     except Exception:
         return ""
+
+
+def ocr_page_text(page_image):
+    if not OCR_AVAILABLE or page_image is None:
+        return ""
+    try:
+        return pytesseract.image_to_string(page_image, lang="eng")
+    except Exception:
+        return ""
+
+
+def create_searchable_pdf(page_image, output_path):
+    if not OCR_AVAILABLE or page_image is None:
+        return False
+    try:
+        pdf_bytes = pytesseract.image_to_pdf_or_hocr(page_image, extension="pdf")
+        with open(output_path, "wb") as out_file:
+            out_file.write(pdf_bytes)
+        return True
+    except Exception:
+        return False
 
 
 def find_text_below_image(img_rect, spans, tolerance):
@@ -383,7 +404,7 @@ def choose_xlsx_template():
         return None
 
 
-def get_page_text_organized(doc, page_number, images_info):
+def get_page_text_organized(doc, page_number, images_info, page_image=None):
     """Extract all text from page in organized format for review."""
     page = doc[page_number]
     page_text = []
@@ -396,8 +417,11 @@ def get_page_text_organized(doc, page_number, images_info):
         return "\n".join(page_text)
     
     spans = get_text_spans(page)
-    page_image = render_page_image(page) if OCR_AVAILABLE else None
-    
+    if not spans and OCR_AVAILABLE and page_image is not None:
+        text_page = ocr_page_text(page_image)
+        if text_page.strip():
+            spans = [(line, fitz.Rect(0, 0, 0, 0)) for line in text_page.splitlines() if line.strip()]
+
     for img_idx, (xref, img_rect) in enumerate(images_info, start=1):
         page_text.append(f"\nImage {img_idx}:")
         page_text.append("-" * 50)
@@ -406,11 +430,13 @@ def get_page_text_organized(doc, page_number, images_info):
         if not lines and OCR_AVAILABLE:
             ocr_text = ocr_text_below_image(page, page_image, img_rect)
             lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
-        
+        if not lines and OCR_AVAILABLE and page_image is not None:
+            ocr_text = ocr_page_text(page_image)
+            lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
+
         if lines:
             raw_text = " ".join(lines)
             page_text.append(f"Raw text below image:\n{raw_text}\n")
-            
             meta = extract_metadata(lines)
             page_text.append(f"Extracted metadata:")
             page_text.append(f"  SKU: {meta.get('sku', '(not found)')}")
@@ -490,10 +516,14 @@ def main():
             page_header = extract_page_header_metadata(page, PAGE_HEADER_TOLERANCE)
             print(f"[{page_header.get('category', 'Unknown')}]")
 
-            page_text = get_page_text_organized(doc, page_number, images)
-            text_output.append(page_text)
-
             page_image = render_page_image(page) if OCR_AVAILABLE else None
+
+            page_text = get_page_text_organized(doc, page_number, images, page_image)
+            text_output.append(page_text)
+            if not page.get_text("text") and OCR_AVAILABLE and page_image is not None:
+                searchable_pdf_path = extracted_text_base / f"{pdf_path.stem}_page{page_number + 1}_searchable.pdf"
+                if not searchable_pdf_path.exists() and create_searchable_pdf(page_image, searchable_pdf_path):
+                    text_output.append(f"Searchable PDF created: {searchable_pdf_path.name}")
 
             for image_index, (xref, img_rect) in enumerate(images, start=1):
                 image_info = doc.extract_image(xref)
@@ -502,6 +532,9 @@ def main():
                 lines = find_text_below_image(img_rect, spans, UNDER_IMAGE_TOLERANCE)
                 if not lines and OCR_AVAILABLE:
                     ocr_text = ocr_text_below_image(page, page_image, img_rect)
+                    lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
+                if not lines and OCR_AVAILABLE and page_image is not None:
+                    ocr_text = ocr_page_text(page_image)
                     lines = [line.strip() for line in ocr_text.splitlines() if line.strip()]
 
                 # Extract SKU from lines below image

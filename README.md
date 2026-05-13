@@ -44,10 +44,82 @@ A fully modular, highly interactive system for extracting product images and met
 ### 1. Install Dependencies
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Google Drive Setup (One-Time)
+### 2. Configure Environment Variables
+
+**Option A: Copy and edit the .env file:**
+```bash
+cp .env.example .env
+# Edit .env with your API keys and settings
+# (A .env file is already created with your Gemini API key)
+```
+
+**Option B: Set environment variables directly:**
+```bash
+export DESCRIPTION_BACKEND=gemini
+export GEMINI_API_KEY="AIzaSyAelvIeT5vPN6P2gNZOAY-78cqnho23INI"
+export GEMINI_MODEL="gemini-pro"
+export GEMINI_API_URL="https://gemini.googleapis.com/v1/models"
+```
+
+> **Security Note:** Never commit API keys to version control. The `.env` file is already in `.gitignore`.
+
+## 📥 Download & Setup
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/Vasper1947/MY-AUTOMATION-TOOL.git
+cd MY-AUTOMATION-TOOL
+```
+
+### Quick Setup (Automated)
+
+**Linux/macOS:**
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+**Windows:**
+```cmd
+setup.bat
+```
+
+### Manual Setup
+
+1. **Install Python 3.8+** if not already installed
+
+2. **Create virtual environment:**
+   ```bash
+   python -m venv .venv
+   ```
+
+3. **Activate environment:**
+   ```bash
+   # Windows:
+   .venv\Scripts\activate
+   
+   # macOS/Linux:
+   source .venv/bin/activate
+   ```
+
+4. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys and settings
+   ```
+
+### 3. Google Drive Setup (One-Time)
 
 1. **Create a Google Cloud project:**
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
@@ -62,9 +134,13 @@ pip install -r requirements.txt
 3. **Create a Google Drive folder:**
    - Create a new folder in your Google Drive
    - Copy the folder ID from the URL: `https://drive.google.com/drive/folders/FOLDER_ID_HERE`
-   - Edit **`3_upload_and_excel.py`** and update:
+   - You can either edit **`3_upload_and_excel.py`** and update:
      ```python
-     GOOGLE_DRIVE_FOLDER_ID = "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE"  # ← Paste here
+     GOOGLE_DRIVE_FOLDER_ID = "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE"
+     ```
+   - Or set the environment variable before running Step 3:
+     ```bash
+     export GOOGLE_DRIVE_FOLDER_ID="YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE"
      ```
 
 ### 3. Setup Ollama (For AI Descriptions)
@@ -80,9 +156,19 @@ ollama serve
 
 **Or set custom Ollama URL:**
 ```bash
-set OLLAMA_URL=http://your-ollama-server:11434/api/generate
-set OLLAMA_MODEL=llava  # or your vision model
+export OLLAMA_URL=http://your-ollama-server:11434/api/generate
+export OLLAMA_MODEL=llava  # or your vision model
 ```
+
+**Or use Gemini API for descriptions:**
+```bash
+export DESCRIPTION_BACKEND=gemini
+export GEMINI_API_KEY="AIzaSyAelvIeT5vPN6P2gNZOAY-78cqnho23INI"
+export GEMINI_MODEL="gemini-pro"
+export GEMINI_API_URL="https://gemini.googleapis.com/v1/models"
+```
+
+> **Security Note:** Never commit API keys to version control. Consider using a `.env` file with `python-dotenv` or set environment variables securely.
 
 ---
 

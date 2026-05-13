@@ -18,6 +18,12 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 def clear_screen():
     """Clear the terminal screen."""
@@ -169,16 +175,19 @@ def check_google_drive():
     else:
         print("  ⚠️  token.pickle missing (will authenticate on first run)")
 
-    # Check folder ID in script
+    # Check folder ID in script or environment
     script_path = Path("3_upload_and_excel.py")
-    if script_path.exists():
+    env_drive_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+    if env_drive_id:
+        print("  ✅ GOOGLE_DRIVE_FOLDER_ID set via environment variable")
+    elif script_path.exists():
         with open(script_path, "r", encoding="utf-8") as f:
             content = f.read()
             if "YOUR_GOOGLE_DRIVE_FOLDER_ID_HERE" in content:
                 print("  ❌ GOOGLE_DRIVE_FOLDER_ID not set in 3_upload_and_excel.py")
                 return False
             else:
-                print("  ✅ GOOGLE_DRIVE_FOLDER_ID configured")
+                print("  ✅ GOOGLE_DRIVE_FOLDER_ID configured in script")
     else:
         print("  ❌ 3_upload_and_excel.py not found")
         return False
